@@ -1,4 +1,4 @@
-/* Copyright (c) 2006-2015 Jonas Fonseca <jonas.fonseca@gmail.com>
+/* Copyright (c) 2006-2022 Jonas Fonseca <jonas.fonseca@gmail.com>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
@@ -52,6 +52,9 @@ add_pager_refs(struct view *view, const char *commit_id)
 	for (; list; list = list->next) {
 		const struct ref *ref = list;
 		const struct ref_format *fmt = get_ref_format(opt_reference_format, ref);
+
+		if (!strcmp(fmt->start, "hide:") && !*fmt->end)
+			continue;
 
 		if (!string_format_from(buf, &bufpos, "%s%s%s%s", sep,
 					fmt->start, ref->name, fmt->end))
@@ -131,9 +134,12 @@ pager_common_read(struct view *view, const char *data, enum line_type type, stru
 	return true;
 }
 
-bool
+static bool
 pager_read(struct view *view, struct buffer *buf, bool force_stop)
 {
+	if (opt_pager_autoscroll && view->pos.offset + view->height == view->lines - 1)
+		do_scroll_view(view, 1);
+
 	if (!buf) {
 		if (!diff_done_highlight(view->private)) {
 			report("Failed run the diff-highlight program: %s", opt_diff_highlight);
@@ -151,6 +157,9 @@ pager_request(struct view *view, enum request request, struct line *line)
 {
 	enum open_flags flags = view_is_displayed(view) ? OPEN_SPLIT : OPEN_DEFAULT;
 	int split = 0;
+
+	if (request == REQ_EDIT)
+		return diff_common_edit(view, request, line);
 
 	if (request != REQ_ENTER)
 		return request;

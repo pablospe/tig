@@ -1,4 +1,4 @@
-/* Copyright (c) 2006-2015 Jonas Fonseca <jonas.fonseca@gmail.com>
+/* Copyright (c) 2006-2022 Jonas Fonseca <jonas.fonseca@gmail.com>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
@@ -49,6 +49,8 @@ encoding_open(const char *fromcode)
 	}
 
 	encoding = calloc(1, sizeof(*encoding) + len);
+	if (!encoding)
+		die("Failed to allocate encoding");
 	strcpy(encoding->fromcode, fromcode);
 	encoding->cd = iconv_open(ENCODING_UTF8, fromcode);
 	if (encoding->cd == ICONV_NONE) {
@@ -65,17 +67,43 @@ encoding_open(const char *fromcode)
 static bool
 encoding_convert_string(iconv_t iconv_cd, struct buffer *buf)
 {
-	static char out_buffer[BUFSIZ * 2];
+	static char *out_buffer;
+	static size_t out_size;
 	ICONV_CONST char *inbuf = buf->data;
 	size_t inlen = buf->size + 1;
 
-	char *outbuf = out_buffer;
-	size_t outlen = sizeof(out_buffer);
+	char *outbuf;
+	size_t outlen;
 
-	size_t ret = iconv(iconv_cd, &inbuf, &inlen, &outbuf, &outlen);
+	size_t ret;
+
+	if (!out_size) {
+		out_size = BUFSIZ * 2;
+		out_buffer = malloc(out_size);
+		if (!out_buffer)
+			die("Failed to allocate buffer");
+	}
+
+	outbuf = out_buffer;
+	outlen = out_size;
+
+	for (;;) {
+		ret = iconv(iconv_cd, &inbuf, &inlen, &outbuf, &outlen);
+		if (ret == (size_t) -1 && errno == E2BIG) {
+			char *tmp = realloc(out_buffer, out_size + BUFSIZ);
+			if (!tmp)
+				break;
+			out_buffer = tmp;
+			outbuf = out_buffer + (out_size - outlen);
+			out_size += BUFSIZ;
+			outlen += BUFSIZ;
+		} else
+			break;
+	}
+
 	if (ret != (size_t) -1) {
 		buf->data = out_buffer;
-		buf->size = sizeof(out_buffer) - outlen;
+		buf->size = out_size - outlen;
 	}
 
 	return (ret != (size_t) -1);
@@ -646,7 +674,7 @@ io_from_string(struct io *io, const char *str)
 	io->bufsize = io->bufalloc = len;
 	io->bufpos = io->buf;
 	io->eof = true;
-	strncpy(io->buf, str, len);
+	strcpy(io->buf, str);
 
 	return true;
 }

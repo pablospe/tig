@@ -1,4 +1,4 @@
-/* Copyright (c) 2006-2015 Jonas Fonseca <jonas.fonseca@gmail.com>
+/* Copyright (c) 2006-2022 Jonas Fonseca <jonas.fonseca@gmail.com>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
@@ -25,9 +25,9 @@
 
 bool argv_to_string(const char *argv[], char *buf, size_t buflen, const char *sep);
 char *argv_to_string_alloc(const char *argv[], const char *sep);
-bool argv_to_string_quoted(const char *argv[SIZEOF_ARG], char *buf, size_t buflen, const char *sep);
-bool argv_from_string_no_quotes(const char *argv[SIZEOF_ARG], int *argc, char *cmd);
-bool argv_from_string(const char *argv[SIZEOF_ARG], int *argc, char *cmd);
+bool argv_to_string_quoted(const char *argv[], char *buf, size_t buflen, const char *sep);
+bool argv_from_string_no_quotes(const char *argv[], int *argc, char *cmd);
+bool argv_from_string(const char *argv[], int *argc, char *cmd);
 void argv_free(const char *argv[]);
 size_t argv_size(const char **argv);
 bool argv_append(const char ***argv, const char *arg);
@@ -35,6 +35,7 @@ bool argv_appendn(const char ***argv, const char *arg, size_t arglen);
 bool argv_append_array(const char ***dst_argv, const char *src_argv[]);
 bool argv_copy(const char ***dst, const char *src[]);
 bool argv_contains(const char **argv, const char *arg);
+bool argv_containsn(const char **argv, const char *arg, size_t arglen);
 
 typedef char argv_string[SIZEOF_STR];
 typedef unsigned long argv_number;
@@ -45,6 +46,7 @@ typedef unsigned long argv_number;
 	_(argv_string,	 branch,	"",		"") \
 	_(argv_string,	 directory,	".",		"") \
 	_(argv_string,	 file,		"",		"") \
+	_(argv_string,	 file_old,	"",		"") \
 	_(argv_string,	 head,		"",		"HEAD") \
 	_(argv_number,	 lineno,	"",		0) \
 	_(argv_number,	 lineno_old,	"",		0) \
@@ -68,7 +70,13 @@ struct argv_env {
 
 extern struct argv_env argv_env;
 
-bool argv_format(struct argv_env *argv_env, const char ***dst_argv, const char *src_argv[], bool first, bool file_filter);
+enum argv_flag {
+	argv_flag_first = 1 << 0,
+	argv_flag_file_filter = 1 << 1,
+	argv_flag_rev_filter = 1 << 2,
+};
+
+bool argv_format(struct argv_env *argv_env, const char ***dst_argv, const char *src_argv[], int flags);
 char *argv_format_arg(struct argv_env *argv_env, const char *src_arg);
 
 struct rev_flags {

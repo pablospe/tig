@@ -1,4 +1,4 @@
-/* Copyright (c) 2006-2015 Jonas Fonseca <jonas.fonseca@gmail.com>
+/* Copyright (c) 2006-2022 Jonas Fonseca <jonas.fonseca@gmail.com>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
@@ -25,6 +25,7 @@
 #include "tig/status.h"
 #include "tig/main.h"
 #include "tig/stage.h"
+#include "tig/search.h"
 
 static struct status stage_status;
 static enum line_type stage_line_type;
@@ -320,8 +321,10 @@ stage_insert_chunk(struct view *view, struct chunk_header *header,
 	int i;
 
 	box = from->data;
-	for (i = 0; i < box->cells; i++)
+	for (i = 0; i < box->cells; i++) {
 		box->cell[i].length = 0;
+		box->cell[i].type = LINE_DIFF_CHUNK;
+	}
 
 	if (!append_line_format(view, from, "@@ -%lu,%lu +%lu,%lu @@",
 			header->old.position, header->old.lines,
@@ -401,6 +404,7 @@ stage_split_chunk(struct view *view, struct line *chunk_start)
 	if (chunks) {
 		stage_insert_chunk(view, &header, chunk_start, NULL, NULL);
 		redraw_view(view);
+		reset_search(view);
 		report("Split the chunk in %d", chunks + 1);
 	} else {
 		report("The chunk cannot be split");
@@ -440,6 +444,7 @@ static bool
 find_deleted_line_in_head(struct view *view, struct line *line) {
 	struct io io;
 	struct buffer buffer;
+	struct status file_status;
 	unsigned long line_number_in_head, line_number = 0;
 	long bias_by_staged_changes = 0;
 	char buf[SIZEOF_STR] = "";
@@ -450,7 +455,7 @@ find_deleted_line_in_head(struct view *view, struct line *line) {
 		"git", "ls-tree", "-z", "HEAD", view->env->file, NULL
 	};
 	const char *diff_argv[] = {
-		"git", "diff", "--root", file_in_head_pathspec, file_in_index_pathspec,
+		"git", "diff", file_in_head_pathspec, file_in_index_pathspec,
 		"--no-color", NULL
 	};
 
@@ -462,9 +467,8 @@ find_deleted_line_in_head(struct view *view, struct line *line) {
 	if (buf[0]) {
 		file_in_head = view->env->file;
 	} else { // The file might might be renamed in the index. Find its old name.
-		struct status file_status;
 		const char *diff_index_argv[] = {
-			"git", "diff-index", "--root", "--cached", "-C",
+			"git", "diff-index", "--cached", "-C",
 			"--diff-filter=ACR", "-z", "HEAD", NULL
 		};
 		if (!io_run(&io, IO_RD, repo.exec_dir, NULL, diff_index_argv) || io.status)
@@ -507,8 +511,8 @@ find_deleted_line_in_head(struct view *view, struct line *line) {
 	// If we are in an unstaged diff, we also need to take into
 	// account the staged changes to this file, since they happened
 	// between HEAD and our diff.
-	sprintf(file_in_head_pathspec, "HEAD:%s", file_in_head);
-	sprintf(file_in_index_pathspec, ":%s", view->env->file);
+	snprintf(file_in_head_pathspec, sizeof(file_in_head_pathspec), "HEAD:%s", file_in_head);
+	snprintf(file_in_index_pathspec, sizeof(file_in_index_pathspec), ":%s", view->env->file);
 	if (!io_run(&io, IO_RD, repo.exec_dir, NULL, diff_argv) || io.status)
 		return false;
 	// line_number_in_head is still the line number in the staged
@@ -639,7 +643,7 @@ stage_request(struct view *view, enum request request, struct line *line)
 		if (stage_status.new.name[0]) {
 			string_copy(view->env->file, stage_status.new.name);
 		} else {
-			const char *file = diff_get_pathname(view, line);
+			const char *file = diff_get_pathname(view, line, false);
 
 			if (file)
 				string_ncopy(view->env->file, file, strlen(file));
@@ -660,6 +664,11 @@ stage_request(struct view *view, enum request request, struct line *line)
 			view->env->goto_lineno--;
 		return request;
 
+	case REQ_VIEW_CLOSE:
+	case REQ_VIEW_CLOSE_NO_QUIT:
+		stage_line_type = 0;
+		return request;
+
 	case REQ_ENTER:
 		return diff_common_enter(view, request, line);
 
@@ -671,7 +680,9 @@ stage_request(struct view *view, enum request request, struct line *line)
 	 * stage view if it doesn't. */
 	if (view->parent && !stage_exists(view, &stage_status, stage_line_type)) {
 		stage_line_type = 0;
-		return REQ_VIEW_CLOSE;
+		return view->parent == &status_view
+				? view_request(view->parent, REQ_ENTER)
+				: REQ_VIEW_CLOSE;
 	}
 
 	refresh_view(view);
@@ -698,16 +709,16 @@ stage_open(struct view *view, enum open_flags flags)
 	};
 	const char *index_show_argv[] = {
 		GIT_DIFF_STAGED(encoding_arg, diff_context_arg(), ignore_space_arg(),
-			stage_status.old.name, stage_status.new.name)
+			word_diff_arg(), stage_status.old.name, stage_status.new.name)
 	};
 	const char *files_show_argv[] = {
 		GIT_DIFF_UNSTAGED(encoding_arg, diff_context_arg(), ignore_space_arg(),
-			stage_status.old.name, stage_status.new.name)
+			word_diff_arg(), stage_status.old.name, stage_status.new.name)
 	};
 	/* Diffs for unmerged entries are empty when passing the new
 	 * path, so leave out the new path. */
 	const char *files_unmerged_argv[] = {
-		"git", "diff-files", encoding_arg, "--root", "--patch-with-stat",
+		"git", "diff-files", encoding_arg, "--textconv", "--patch-with-stat",
 			DIFF_ARGS, diff_context_arg(), ignore_space_arg(), "--",
 			stage_status.old.name, NULL
 	};
@@ -772,28 +783,31 @@ stage_read(struct view *view, struct buffer *buf, bool force_stop)
 {
 	struct stage_state *state = view->private;
 
+	if (!stage_line_type)
+		return true;
+
 	if (stage_line_type == LINE_STAT_UNTRACKED)
 		return pager_common_read(view, buf ? buf->data : NULL, LINE_DEFAULT, NULL);
 
 	if (!buf) {
 		if (!diff_done_highlight(&state->diff)) {
 			report("Failed run the diff-highlight program: %s", opt_diff_highlight);
-			return true;
+			return false;
 		}
-	}
 
-	if (!buf && !view->lines && view->parent) {
-		maximize_view(view->parent, true);
-		return true;
-	}
+		if (!view->lines && !force_stop && view->prev) {
+			watch_apply(&view->watch, WATCH_INDEX);
+			stage_line_type = 0;
+			maximize_view(view->prev, false);
+			return false;
+		}
 
-	if (!buf)
 		diff_restore_line(view, &state->diff);
 
-	if (buf && diff_common_read(view, buf->data, &state->diff))
 		return true;
+	}
 
-	return pager_read(view, buf, force_stop);
+	return diff_common_read(view, buf->data, &state->diff);
 }
 
 static struct view_ops stage_ops = {

@@ -1,4 +1,4 @@
-/* Copyright (c) 2006-2015 Jonas Fonseca <jonas.fonseca@gmail.com>
+/* Copyright (c) 2006-2022 Jonas Fonseca <jonas.fonseca@gmail.com>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
@@ -143,7 +143,9 @@ bool map_enum_do(const struct enum_map_entry *map, size_t map_size, int *value, 
 
 #define REFERENCE_ENUM(_) \
 	_(REFERENCE, HEAD), \
+	_(REFERENCE, STASH), \
 	_(REFERENCE, BRANCH), \
+	_(REFERENCE, OTHER), \
 	_(REFERENCE, TRACKED_REMOTE), \
 	_(REFERENCE, REMOTE), \
 	_(REFERENCE, TAG), \

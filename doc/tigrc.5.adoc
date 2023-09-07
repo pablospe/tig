@@ -185,12 +185,14 @@ The following variables can be set:
 	Prefix with `hide:` to not show that reference type, e.g. `hide:remote`.
 	Supported reference types are:
 	 - head			: The current HEAD.
-	 - tag			: A signed tag.
-	 - local-tag		: An unsigned tag.
+	 - tag			: An annotated tag.
+	 - local-tag		: A lightweight tag.
 	 - remote		: A remote.
 	 - tracked-remote	: The remote tracked by current HEAD.
 	 - replace		: A replaced reference.
-	 - branch		: Any other reference.
+	 - branch		: A branch.
+	 - stash		: The stash.
+	 - other		: Any other reference.
 
 'line-graphics' (mixed) [ascii|default|utf-8|auto|<bool>]::
 
@@ -361,6 +363,11 @@ The following variables can be set:
 	mouse wheel. Off by default. Combines well with `set mouse-scroll = 1`.
 	Mouse support requires that ncurses itself support mouse events and that
 	you have enabled mouse support in ~/.tigrc with `set mouse = true`.
+
+'pager-autoscroll' (bool)::
+
+	Whether to scroll automatically the pager view while loading. Move the
+	cursor out of the last line to stop scrolling and back in to resume.
 
 'pgrp' (bool)::
 
@@ -615,8 +622,9 @@ Keymaps::
 
 Valid keymaps are: *main*, *diff*, *log*, *reflog*, *help*, *pager*, *status*,
 *stage*, *tree*, *blob*, *blame*, *refs*, *stash*, *grep* and *generic*. Use
-*generic* to set key mapping in all keymaps. Use *search* to define keys for
-navigating search results during search.
+*generic* to set key mapping in all keymaps (which may still be overridden by a
+specific view keybinding). Use *search* to define keys for navigating search
+results during search.
 
 Key values::
 
@@ -722,6 +730,7 @@ following variable names, which are substituted before commands are run:
 |%(directory)		|The current directory path in the tree view or
 			 "." if undefined.
 |%(file)		|The currently selected file.
+|%(file_old)		|The old filename of the currently selected file.
 |%(lineno)		|The currently selected line number. Defaults to 0.
 |%(lineno_old)		|The currently selected line number, before the diff
 			 was applied. Defaults to 0.
@@ -736,7 +745,7 @@ following variable names, which are substituted before commands are run:
 |%(mainargs)		|Options from 'main-options' used by the main view.
 |%(prompt)		|Prompt for the argument value. Optionally specify a
 			 custom prompt using `"%(prompt Enter branch name: )"`
-|%(text)		|The text of the currently selected line.
+|%(text)		|The text column of the currently selected line.
 |%(repo:head)		|The name of the checked out branch, e.g. `master`
 |%(repo:head-id)	|The commit ID of the checked out branch.
 |%(repo:remote)		|The remote associated with the checked out branch,
@@ -969,6 +978,8 @@ color diff-chunk	magenta	default
 color "Reported-by:"	green	default
 # View-specific color
 color tree.date		black	cyan	bold
+# Custom color
+color "/(note|warning|error):/"	yellow	default	bold
 --------------------------------------------------------------------------
 
 Or in the Git configuration files:
@@ -989,7 +1000,8 @@ Area names::
 
 	Can be either a built-in area name or a custom quoted string. The
 	latter allows custom color rules to be added for lines matching a
-	quoted string.
+	quoted string. Strings of the form "/.../" are interpreted as
+	regular expressions.
 	Valid built-in area names are described below. Note, all names are
 	case-insensitive, and you may use '-', and '_' interchangeably,
 	e.g. "Diff-Header" and "DIFF_HEADER" are the same.
@@ -1123,7 +1135,7 @@ omnipresent.
 
 Commit message::
 
-`Signed-off-by`, `Acked-by`, `Reviewed-by` and `Tested-by` lines are colorized.
+Most common trailer lines (e.g. `Signed-off-by`) are colorized.
 Characters in the commit title exceeding a predefined width can be highlighted.
 
 
@@ -1160,7 +1172,7 @@ source ~/.tig/keybindings.tigrc
 
 COPYRIGHT
 ---------
-Copyright (c) 2006-2014 Jonas Fonseca <jonas.fonseca@gmail.com>
+Copyright (c) 2006-2022 Jonas Fonseca <jonas.fonseca@gmail.com>
 
 This program is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by

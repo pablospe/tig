@@ -1,4 +1,4 @@
-/* Copyright (c) 2006-2015 Jonas Fonseca <jonas.fonseca@gmail.com>
+/* Copyright (c) 2006-2022 Jonas Fonseca <jonas.fonseca@gmail.com>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
@@ -92,7 +92,6 @@ do_scroll_view(struct view *view, int lines)
 		wnoutrefresh(view->win);
 	}
 
-	view->has_scrolled = true;
 	report_clear();
 }
 
@@ -333,7 +332,8 @@ goto_id(struct view *view, const char *expr, bool from_start, bool save_search)
 		report("Jumping to ID is not supported by the %s view", view->name);
 		return;
 	} else {
-		char *rev = argv_format_arg(view->env, expr);
+		char tmp[SIZEOF_STR];
+		char *rev = (snprintf(tmp, SIZEOF_STR, "%s^{}", expr), argv_format_arg(view->env, tmp));
 		const char *rev_parse_argv[] = {
 			"git", "rev-parse", "--revs-only", rev, NULL
 		};
@@ -393,7 +393,7 @@ push_view_history_state(struct view_history *history, struct position *position,
 
 	if (state && data && history->state_alloc &&
 	    !memcmp(state->data, data, history->state_alloc))
-		return NULL;
+		return state;
 
 	state = calloc(1, sizeof(*state) + history->state_alloc);
 	if (!state)
@@ -524,17 +524,10 @@ view_no_refresh(struct view *view, enum open_flags flags)
 	       ((flags & OPEN_REFRESH) && !view_can_refresh(view));
 }
 
-bool
-view_exec(struct view *view, enum open_flags flags)
+static const char *
+stat_arg(struct view *view, enum open_flags flags)
 {
-	char opt_env_lines[64] = "";
-	char opt_env_columns[64] = "";
-	char * const opt_env[]	= { opt_env_lines, opt_env_columns, NULL };
-
-	enum io_flags forward_stdin = (flags & OPEN_FORWARD_STDIN) ? IO_RD_FORWARD_STDIN : 0;
-	enum io_flags with_stderr = (flags & OPEN_WITH_STDERR) ? IO_RD_WITH_STDERR : 0;
-	enum io_flags io_flags = forward_stdin | with_stderr;
-
+	static char opt_stat_arg[64] = "";
 	int views = displayed_views();
 	bool split = (views == 1 && !!(flags & OPEN_SPLIT)) || views == 2;
 	int height, width;
@@ -550,10 +543,32 @@ view_exec(struct view *view, enum open_flags flags)
 			width = split_width - 1;
 	}
 
-	string_format(opt_env_columns, "COLUMNS=%d", MAX(0, width));
-	string_format(opt_env_lines, "LINES=%d", height);
+	string_format(opt_stat_arg, "--stat=%d", MAX(0, width));
+	return opt_stat_arg;
+}
 
-	return io_exec(&view->io, IO_RD, view->dir, opt_env, view->argv, io_flags);
+bool
+view_exec(struct view *view, enum open_flags flags)
+{
+	const char **argv = NULL;
+	int i;
+	bool ok;
+
+	enum io_flags forward_stdin = (flags & OPEN_FORWARD_STDIN) ? IO_RD_FORWARD_STDIN : 0;
+	enum io_flags with_stderr = (flags & OPEN_WITH_STDERR) ? IO_RD_WITH_STDERR : 0;
+	enum io_flags io_flags = forward_stdin | with_stderr;
+
+	for (i = 0; view->argv[i]; i++) {
+		const char *arg = view->argv[i];
+		if (strcmp(arg, "--stat"))
+			argv_append(&argv, arg);
+		if (!strcmp(arg, "--stat") || !strcmp(arg, "--patch-with-stat"))
+			argv_append(&argv, stat_arg(view, flags));
+	}
+	ok = io_exec(&view->io, IO_RD, view->dir, NULL, argv, io_flags);
+	argv_free(argv);
+	free(argv);
+	return ok;
 }
 
 enum status_code
@@ -575,10 +590,16 @@ begin_update(struct view *view, const char *dir, const char **argv, enum open_fl
 	view->unrefreshable = open_in_pager_mode(flags);
 
 	if (!refresh && argv) {
-		bool file_filter = !view_has_flags(view, VIEW_FILE_FILTER) || opt_file_filter;
+		int flags = 0;
+		if (!view->prev)
+			flags |= argv_flag_first;
+		if (!view_has_flags(view, VIEW_FILE_FILTER) || opt_file_filter)
+			flags |= argv_flag_file_filter;
+		if (!view_has_flags(view, VIEW_REV_FILTER) || opt_rev_filter)
+			flags |= argv_flag_rev_filter;
 
 		view->dir = dir;
-		if (!argv_format(view->env, &view->argv, argv, !view->prev, file_filter))
+		if (!argv_format(view->env, &view->argv, argv, flags))
 			return error("Failed to format %s arguments", view->name);
 	}
 
@@ -625,11 +646,8 @@ update_view(struct view *view)
 	}
 
 	for (; io_get(view->pipe, &line, '\n', can_read); can_read = false) {
-		if (encoding && !encoding_convert(encoding, &line)) {
+		if (encoding && !encoding_convert(encoding, &line))
 			report("Encoding failure");
-			end_update(view, true);
-			return false;
-		}
 
 		if (!view->ops->read(view, &line, false)) {
 			report("Allocation failure");
@@ -661,6 +679,7 @@ update_view(struct view *view)
 	/* Update the title _after_ the redraw so that if the redraw picks up a
 	 * commit reference in view->ref it'll be available here. */
 	update_view_title(view);
+	reset_search(view);
 	return true;
 }
 
@@ -749,7 +768,7 @@ split_view(struct view *prev, struct view *view)
 	}
 
 	if (view_has_flags(prev, VIEW_FLEX_WIDTH) && vsplit && nviews == 1)
-		load_view(prev, NULL, OPEN_RELOAD);
+		reload_view(prev);
 }
 
 void
@@ -772,7 +791,7 @@ maximize_view(struct view *view, bool redraw)
 	}
 
 	if (view_has_flags(view, VIEW_FLEX_WIDTH) && vsplit && nviews > 1)
-		load_view(view, NULL, OPEN_RELOAD);
+		reload_view(view);
 }
 
 void
@@ -1563,13 +1582,47 @@ view_column_info_update(struct view *view, struct line *line)
 }
 
 struct line *
-find_line_by_type(struct view *view, struct line *line, enum line_type type, int direction)
+find_line_by_type(struct view *view, struct line *line, enum line_type type, int direction, enum line_type fence)
 {
 	for (; view_has_line(view, line); line += direction)
 		if (line->type == type)
 			return line;
+		else if (line->type == fence)
+			break;
 
 	return NULL;
+}
+
+static inline bool
+forward_request_to_child(struct view *child, enum request request)
+{
+	return displayed_views() == 2 && view_is_displayed(child) &&
+		!strcmp(child->vid, child->ops->id);
+}
+
+enum request
+view_request(struct view *view, enum request request)
+{
+	if (!view || !view->lines)
+		return request;
+
+	if (request == REQ_ENTER && view == display[0] &&
+	    !opt_focus_child && opt_send_child_enter &&
+	    view_has_flags(view, VIEW_SEND_CHILD_ENTER)) {
+		struct view *child = display[1];
+
+		if (forward_request_to_child(child, request)) {
+			view_request(child, request);
+			return REQ_NONE;
+		}
+	}
+
+	if (request == REQ_REFRESH && !view_can_refresh(view)) {
+		report("This view can not be refreshed");
+		return REQ_NONE;
+	}
+
+	return view->ops->request(view, request, &view->line[view->pos.lineno]);
 }
 
 /*

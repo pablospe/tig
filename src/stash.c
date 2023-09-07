@@ -1,4 +1,4 @@
-/* Copyright (c) 2006-2015 Jonas Fonseca <jonas.fonseca@gmail.com>
+/* Copyright (c) 2006-2022 Jonas Fonseca <jonas.fonseca@gmail.com>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
@@ -21,15 +21,35 @@ static enum status_code
 stash_open(struct view *view, enum open_flags flags)
 {
 	static const char *stash_argv[] = { "git", "stash", "list",
-		encoding_arg, "--no-color", "--pretty=raw", "%(revargs)", NULL };
+		encoding_arg, "--no-color", "--pretty=raw", NULL };
+	const char **argv = NULL;
 	struct main_state *state = view->private;
+	enum status_code code;
 
 	if (!(repo.is_inside_work_tree || *repo.worktree))
 		return error("The stash view requires a working tree");
 
+	/* git stash list only works well with commit limiting options,
+	 * so filter --all, --branches, --remotes and revisions from
+	 * %(revargs). */
+	if (!argv_append_array(&argv, stash_argv))
+		return ERROR_OUT_OF_MEMORY;
+	if (opt_rev_args) {
+		int i;
+		for (i = 0; opt_rev_args[i]; i++) {
+			const char *arg = opt_rev_args[i];
+			if (arg[0] == '-' && strcmp(arg, "--all") &&
+			    strcmp(arg, "--branches") && strcmp(arg, "--remotes"))
+				argv_append(&argv, arg);
+		}
+	}
+
 	state->with_graph = false;
 	watch_register(&view->watch, WATCH_STASH);
-	return begin_update(view, NULL, stash_argv, flags | OPEN_RELOAD);
+	code = begin_update(view, NULL, argv, flags | OPEN_RELOAD);
+	argv_free(argv);
+	free(argv);
+	return code;
 }
 
 static void
@@ -54,20 +74,16 @@ stash_request(struct view *view, enum request request, struct line *line)
 	switch (request) {
 	case REQ_VIEW_DIFF:
 	case REQ_ENTER:
-		if (view_is_displayed(view) && display[0] != view)
-			maximize_view(view, true);
-
 		if (!view_is_displayed(diff) ||
 		    strcmp(view->env->stash, diff->ref)) {
 			const char *diff_argv[] = {
 				"git", "stash", "show", encoding_arg, "--pretty=fuller",
-					"--root", "--patch-with-stat",
-					show_notes_arg(), diff_context_arg(),
-					ignore_space_arg(), DIFF_ARGS,
+					"--patch-with-stat", diff_context_arg(),
+					ignore_space_arg(), word_diff_arg(), DIFF_ARGS,
 					"--no-color", "%(stash)", NULL
 			};
 
-			if (!argv_format(diff_view.env, &diff_view.argv, diff_argv, false, false))
+			if (!argv_format(diff_view.env, &diff_view.argv, diff_argv, 0))
 				report("Failed to format argument");
 			else
 				open_diff_view(view, flags | OPEN_PREPARED);

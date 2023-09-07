@@ -1,4 +1,4 @@
-/* Copyright (c) 2006-2015 Jonas Fonseca <jonas.fonseca@gmail.com>
+/* Copyright (c) 2006-2022 Jonas Fonseca <jonas.fonseca@gmail.com>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
@@ -54,37 +54,11 @@
 #include <readline/readline.h>
 #endif /* HAVE_READLINE */
 
-static bool
-forward_request_to_child(struct view *child, enum request request)
-{
-	return displayed_views() == 2 && view_is_displayed(child) &&
-		!strcmp(child->vid, child->ops->id);
-}
-
-static enum request
-view_request(struct view *view, enum request request)
-{
-	if (!view || !view->lines)
-		return request;
-
-	if (request == REQ_ENTER && view == display[0] &&
-	    !opt_focus_child && opt_send_child_enter &&
-	    view_has_flags(view, VIEW_SEND_CHILD_ENTER)) {
-		struct view *child = display[1];
-
-		if (forward_request_to_child(child, request)) {
-			view_request(child, request);
-			return REQ_NONE;
-		}
-	}
-
-	if (request == REQ_REFRESH && !view_can_refresh(view)) {
-		report("This view can not be refreshed");
-		return REQ_NONE;
-	}
-
-	return view->ops->request(view, request, &view->line[view->pos.lineno]);
-}
+#if defined HAVE_PCRE2
+#include <pcre2.h>
+#elif defined HAVE_PCRE
+#include <pcre.h>
+#endif
 
 /*
  * Option management
@@ -104,6 +78,7 @@ view_request(struct view *view, enum request request)
 	_('C', "local change display",		"show-changes"), \
 	_('X', "commit ID display",		"id"), \
 	_('%', "file filtering",		"file-filter"), \
+	_('^', "revision filtering",		"rev-filter"), \
 	_('$', "commit title overflow display",	"commit-title-overflow"), \
 	_('d', "untracked directory info",	"status-show-untracked-dirs"), \
 	_('|', "view split",			"vertical-split"), \
@@ -254,7 +229,9 @@ view_driver(struct view *view, enum request request)
 			move_view(parent, request);
 			if (view_is_displayed(parent))
 				update_view_title(parent);
-			if (line != parent->pos.lineno) {
+			if (line != parent->pos.lineno &&
+			    !(parent == &tree_view && 
+			      parent->line[parent->pos.lineno].type == LINE_DIRECTORY)) {
 				end_update(view, true);
 				view_request(parent, REQ_ENTER);
 			}
@@ -347,6 +324,7 @@ view_driver(struct view *view, enum request request)
 		 * view itself. Parents to closed view should never be
 		 * followed. */
 		if (view->prev && view->prev != view) {
+			end_update(view, true);
 			maximize_view(view->prev, true);
 			view->prev = view;
 			break;
@@ -357,6 +335,8 @@ view_driver(struct view *view, enum request request)
 		}
 		/* Fall-through */
 	case REQ_QUIT:
+		foreach_view(view, i)
+			end_update(view, true);
 		return false;
 
 	default:
@@ -542,10 +522,13 @@ parse_options(int argc, const char *argv[], bool pager_mode)
 				seen_dashdash = true;
 
 			} else if (!strcmp(opt, "-v") || !strcmp(opt, "--version")) {
+#if defined HAVE_PCRE2
+				char pcre2_version[64];
+#endif
 				printf("tig version %s\n", TIG_VERSION);
 #ifdef NCURSES_VERSION
 				printf("%s version %s.%d\n",
-#ifdef NCURSES_WIDECHAR
+#if defined(HAVE_NCURSESW_CURSES_H) || defined(HAVE_NCURSESW_H)
 				       "ncursesw",
 #else
 				       "ncurses",
@@ -554,6 +537,12 @@ parse_options(int argc, const char *argv[], bool pager_mode)
 #endif
 #ifdef HAVE_READLINE
 				printf("readline version %s\n", rl_library_version);
+#endif
+#if defined HAVE_PCRE2
+				pcre2_config(PCRE2_CONFIG_VERSION, pcre2_version);
+				printf("PCRE2 version %s\n", pcre2_version);
+#elif defined HAVE_PCRE
+				printf("PCRE version %s\n", pcre_version());
 #endif
 				exit(EXIT_SUCCESS);
 

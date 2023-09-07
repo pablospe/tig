@@ -40,6 +40,11 @@ options. The first command line parameter not starting with "-" is interpreted
 as being either a revision specification or a path and will end the option
 parsing. All additional options will be passed to the underlying Git command.
 
+Note that this means that any arguments to options should be specified
+together. For example, run tig -Sfoo instead of tig -S foo, and tig --grep=foo
+instead of tig --grep foo, otherwise foo will be interpreted as a revision
+rather than an argument.
+
 show::
 	Open diff view using the given git-show(1) options.
 
@@ -58,7 +63,8 @@ reflog::
 	Start up in reflog view.
 
 refs::
-	Start up in refs view.
+	Start up in refs view. All refs are displayed unless limited by using
+	one of the '--branches', '--remotes', or '--tags' parameters.
 
 stash::
 	Start up in stash view.
@@ -266,11 +272,12 @@ FILES
 '~/.tig_history'::
 	When compiled with readline support, Tig writes a persistent command and
 	search history. The location of the history file is determined in the
-	following way. If `$XDG_DATA_HOME` is set and `$XDG_DATA_HOME/tig/`
-	exists, store history to `$XDG_DATA_HOME/tig/history`. If
-	`$XDG_DATA_HOME` is empty or undefined, store history to
-	`~/.local/share/tig/history` if the directory `~/.local/share/tig/`
-	exists, and fall back to `~/.tig_history` if it does not exist.
+	following way. If `$XDG_DATA_HOME` is set and `$XDG_DATA_HOME/` exists,
+	create `$XDG_DATA_HOME/tig/` if needed and store history to
+	`$XDG_DATA_HOME/tig/history`. If `$XDG_DATA_HOME` is empty or undefined,
+	store history to `~/.local/share/tig/history` if the directory
+	`~/.local/share/tig/` exists, and fall back to `~/.tig_history` if it
+	does not exist.
 
 BUGS
 ----
@@ -281,7 +288,7 @@ new releases and how to report bugs or feature request.
 
 COPYRIGHT
 ---------
-Copyright (c) 2006-2014 Jonas Fonseca <jonas.fonseca@gmail.com>
+Copyright (c) 2006-2022 Jonas Fonseca <jonas.fonseca@gmail.com>
 
 This program is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by

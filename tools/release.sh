@@ -3,7 +3,7 @@
 # Script for preparing a release or updating the release branch.
 # Usage: $0 version
 #
-# Copyright (c) 2009-2014 Jonas Fonseca <jonas.fonseca@gmail.com>
+# Copyright (c) 2006-2022 Jonas Fonseca <jonas.fonseca@gmail.com>
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License as
@@ -67,7 +67,7 @@ git checkout release
 HEAD="$(git rev-parse release)"
 git merge --ff master
 if test -n "$(git rev-list -1 release ^$HEAD)"; then
-	make distclean doc-man doc-html sysconfdir=++SYSCONFDIR++
+	make veryclean doc-man doc-html sysconfdir=++SYSCONFDIR++
 	git commit -a -m "Update for version $TAG"
 fi
 

@@ -1,4 +1,4 @@
-/* Copyright (c) 2006-2015 Jonas Fonseca <jonas.fonseca@gmail.com>
+/* Copyright (c) 2006-2022 Jonas Fonseca <jonas.fonseca@gmail.com>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
@@ -65,13 +65,14 @@ enum view_flag {
 	VIEW_BLAME_LIKE		= 1 << 8,
 	VIEW_SEND_CHILD_ENTER	= 1 << 9,
 	VIEW_FILE_FILTER	= 1 << 10,
-	VIEW_LOG_LIKE		= 1 << 11,
-	VIEW_STATUS_LIKE	= 1 << 12,
-	VIEW_REFRESH		= 1 << 13,
-	VIEW_GREP_LIKE		= 1 << 14,
-	VIEW_SORTABLE		= 1 << 15,
-	VIEW_FLEX_WIDTH		= 1 << 16,
-	VIEW_RESET_DISPLAY	= 1 << 17,
+	VIEW_REV_FILTER		= 1 << 11,
+	VIEW_LOG_LIKE		= 1 << 12,
+	VIEW_STATUS_LIKE	= 1 << 13,
+	VIEW_REFRESH		= 1 << 14,
+	VIEW_GREP_LIKE		= 1 << 15,
+	VIEW_SORTABLE		= 1 << 16,
+	VIEW_FLEX_WIDTH		= 1 << 17,
+	VIEW_RESET_DISPLAY	= 1 << 18,
 };
 
 #define view_has_flags(view, flag)	((view)->ops->flags & (flag))
@@ -144,7 +145,6 @@ struct view {
 	struct line *curline;	/* Line currently being drawn. */
 	enum line_type curtype;	/* Attribute currently used for drawing. */
 	unsigned long col;	/* Column when drawing. */
-	bool has_scrolled;	/* View was scrolled. */
 	bool force_redraw;	/* Whether to force a redraw after reading. */
 
 	/* Loading */
@@ -312,19 +312,24 @@ enum status_code format_view_config(struct view_column *column, char buf[], size
 bool view_has_wrapped_lines(struct view *view);
 
 struct line *
-find_line_by_type(struct view *view, struct line *line, enum line_type type, int direction);
+find_line_by_type(struct view *view, struct line *line, enum line_type type, int direction, enum line_type fence);
 
 #define find_prev_line_by_type(view, line, type) \
-	find_line_by_type(view, line, type, -1)
+	find_line_by_type(view, line, type, -1, LINE_NONE)
 
 #define find_next_line_by_type(view, line, type) \
-	find_line_by_type(view, line, type, 1)
+	find_line_by_type(view, line, type, 1, LINE_NONE)
+
+#define find_prev_line_in_commit_by_type(view, line, type) \
+	find_line_by_type(view, line, type, -1, LINE_COMMIT)
 
 #define is_initial_view(view) (!(view)->prev && !(view)->argv)
 #define failed_to_load_initial_view(view) (!(view)->prev && !(view)->lines)
 
 #define get_view_color(view, type)	get_line_color((view)->keymap->name, type)
 #define get_view_attr(view, type)	get_line_attr((view)->keymap->name, type)
+
+enum request view_request(struct view *view, enum request request);
 
 /*
  * Incremental updating

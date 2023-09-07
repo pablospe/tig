@@ -1,4 +1,4 @@
-/* Copyright (c) 2006-2015 Jonas Fonseca <jonas.fonseca@gmail.com>
+/* Copyright (c) 2006-2022 Jonas Fonseca <jonas.fonseca@gmail.com>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
@@ -117,6 +117,7 @@ struct line_rule {
 	int namelen;		/* Size of option name. */
 	const char *line;	/* The start of line to match. */
 	int linelen;		/* Size of string to match. */
+	regex_t *regex;		/* Pre-compiled regexp. */
 	struct line_info info;	/* List of line info matching this rule. */
 };
 

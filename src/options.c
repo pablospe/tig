@@ -1,4 +1,4 @@
-/* Copyright (c) 2006-2015 Jonas Fonseca <jonas.fonseca@gmail.com>
+/* Copyright (c) 2006-2022 Jonas Fonseca <jonas.fonseca@gmail.com>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
@@ -123,7 +123,6 @@ iconv_t opt_iconv_out		= ICONV_NONE;
 char opt_editor[SIZEOF_STR]	= "";
 const char **opt_cmdline_args	= NULL;
 bool opt_log_follow		= false;
-bool opt_word_diff		= false;
 
 /*
  * Mapping between options and command argument mapping.
@@ -139,6 +138,12 @@ diff_context_arg()
 		return "";
 
 	return opt_diff_context_arg;
+}
+
+const char *
+word_diff_arg()
+{
+	return opt_word_diff ? "--word-diff=plain" : "--word-diff=none";
 }
 
 const char *
@@ -254,9 +259,23 @@ update_options_from_argv(const char *argv[])
 			continue;
 		}
 
+		if (!strcmp(flag, "--word-diff=none")) {
+			/* opt_word_diff = false; */
+			mark_option_seen(&opt_word_diff);
+			continue;
+		}
+
 		if (!strcmp(flag, "--word-diff") ||
 		    !strcmp(flag, "--word-diff=plain")) {
 			opt_word_diff = true;
+			mark_option_seen(&opt_word_diff);
+			continue;
+		}
+
+		if (!prefixcmp(flag, "--word-diff-regex=")) {
+			opt_word_diff = true;
+			mark_option_seen(&opt_word_diff);
+			/* Keep the flag in argv. */
 		}
 
 		argv[flags_pos++] = flag;
@@ -365,9 +384,46 @@ parse_color_name(const char *color, struct line_rule *rule, const char **prefix_
 
 	memset(rule, 0, sizeof(*rule));
 	if (is_quoted(*color)) {
-		rule->line = color + 1;
-		rule->linelen = strlen(color) - 2;
+		/* Interpret strings of the form "/.../" as regular expressions. */
+		if (strlen(color) >= 4 && color[1] == '/' && color[strlen(color) - 2] == '/') {
+			int regex_err;
+
+			/* rule->line and rule->regex are allocated here rather
+			 * than in add_line_rule() to allow proper error reporting.
+			 * Though only rule->regex will be used for matching regular
+			 * expressions, rule->line and rule->linelen are still filled
+			 * to look up exiting rules when defining view-specific
+			 * colors. */
+			rule->linelen = strlen(color) - 4;
+			rule->line = strndup(color + 2, rule->linelen);
+			if (!rule->line)
+				return ERROR_OUT_OF_MEMORY;
+
+			rule->regex = calloc(1, sizeof(*rule->regex));
+			if (!rule->regex) {
+				free((void *) rule->line);
+				return ERROR_OUT_OF_MEMORY;
+			}
+
+			regex_err = regcomp(rule->regex, rule->line, REG_EXTENDED);
+
+			if (regex_err != 0) {
+				char buf[SIZEOF_STR];
+				regerror(regex_err, rule->regex, buf, sizeof(buf));
+				free((void *) rule->line);
+				free(rule->regex);
+				return error("Invalid color mapping: %s", buf);
+			}
+		} else {
+			rule->linelen = strlen(color) - 2;
+			rule->line = strndup(color + 1, rule->linelen);
+			if (!rule->line)
+				return ERROR_OUT_OF_MEMORY;
+		}
 	} else {
+		/* Built-in area names are preloaded on first call to
+		 * find_line_rule(), so rule->name is only used to look
+		 * up an existing rule and does not need to persist. */
 		rule->name = color;
 		rule->namelen = strlen(color);
 	}
@@ -571,24 +627,25 @@ parse_option(struct option_info *option, const char *prefix, const char *arg)
 	if (!enum_name_prefixed(name, sizeof(name), prefix, option->name))
 		return error("Failed to parse option");
 
-	if (!strcmp("show-notes", name)) {
-		bool *value = option->value;
-		enum status_code res;
+	if (!strcmp(option->type, "bool")) {
+		if (!strcmp("show-notes", name)) {
+			bool *value = option->value;
+			enum status_code res;
 
-		if (parse_bool(option->value, arg) == SUCCESS)
-			return SUCCESS;
+			if (parse_bool(option->value, arg) == SUCCESS)
+				return SUCCESS;
 
-		*value = true;
-		string_copy(opt_notes_arg, NOTES_EQ_ARG);
-		res = parse_string(opt_notes_arg + STRING_SIZE(NOTES_EQ_ARG), arg,
-				   sizeof(opt_notes_arg) - STRING_SIZE(NOTES_EQ_ARG));
-		if (res == SUCCESS && !opt_notes_arg[STRING_SIZE(NOTES_EQ_ARG)])
-			opt_notes_arg[STRING_SIZE(NOTES_ARG)] = 0;
-		return res;
-	}
+			*value = true;
+			string_copy(opt_notes_arg, NOTES_EQ_ARG);
+			res = parse_string(opt_notes_arg + STRING_SIZE(NOTES_EQ_ARG), arg,
+					   sizeof(opt_notes_arg) - STRING_SIZE(NOTES_EQ_ARG));
+			if (res == SUCCESS && !opt_notes_arg[STRING_SIZE(NOTES_EQ_ARG)])
+				opt_notes_arg[STRING_SIZE(NOTES_ARG)] = 0;
+			return res;
+		}
 
-	if (!strcmp(option->type, "bool"))
 		return parse_bool(option->value, arg);
+	}
 
 	if (!strcmp(option->type, "double"))
 		return parse_step(option->value, arg);
@@ -865,6 +922,7 @@ option_bind_command(int argc, const char *argv[])
 			{ "toggle-date",		"date" },
 			{ "toggle-files",		"file-filter" },
 			{ "toggle-file-filter",		"file-filter" },
+			{ "toggle-rev-filter",		"rev-filter" },
 			{ "toggle-file-size",		"file-size" },
 			{ "toggle-filename",		"filename" },
 			{ "toggle-graphic",		"show-graphic" },
@@ -1050,6 +1108,7 @@ load_options(void)
 	char buf[SIZEOF_STR];
 
 	opt_file_filter = true;
+	opt_rev_filter = true;
 	if (!find_option_info_by_value(&opt_diff_context)->seen)
 		opt_diff_context = -3;
 
@@ -1095,10 +1154,11 @@ load_options(void)
 			return error("Failed to format TIG_DIFF_OPTS arguments");
 	}
 
-	if (argv_contains(opt_diff_options, "--word-diff") ||
-	    argv_contains(opt_diff_options, "--word-diff=plain")) {
+	if (!find_option_info_by_value(&opt_word_diff)->seen &&
+	    (argv_contains(opt_diff_options, "--word-diff") ||
+	     argv_contains(opt_diff_options, "--word-diff=plain") ||
+	     argv_containsn(opt_diff_options, "--word-diff-regex=", STRING_SIZE("--word-diff-regex="))))
 		opt_word_diff = true;
-	}
 
 	return SUCCESS;
 }
@@ -1474,8 +1534,9 @@ read_repo_config_option(char *name, size_t namelen, char *value, size_t valuelen
 	else if (!strcmp(name, "diff.noprefix"))
 		parse_bool(&opt_diff_noprefix, value);
 
-	else if (!strcmp(name, "status.showUntrackedFiles"))
-		parse_bool(&opt_status_show_untracked_files, value);
+	else if (!strcmp(name, "status.showuntrackedfiles"))
+		opt_status_show_untracked_files = !!strcmp(value, "no"),
+		opt_status_show_untracked_dirs = !strcmp(value, "all");
 
 	else if (!prefixcmp(name, "tig.color."))
 		set_repo_config_option(name + 10, value, option_color_command);

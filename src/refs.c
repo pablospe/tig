@@ -1,4 +1,4 @@
-/* Copyright (c) 2006-2015 Jonas Fonseca <jonas.fonseca@gmail.com>
+/* Copyright (c) 2006-2022 Jonas Fonseca <jonas.fonseca@gmail.com>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
@@ -76,12 +76,12 @@ refs_request(struct view *view, enum request request, struct line *line)
 		const char *all_references_argv[] = {
 			GIT_MAIN_LOG(encoding_arg, commit_order_arg(),
 				"%(mainargs)", "",
-				refs_is_all(reference) ? "--all" : ref->name, "",
+				refs_is_all(reference) ? "--all" : ref->id, "",
 				show_notes_arg(), log_custom_pretty_arg())
 		};
 		enum open_flags flags = view_is_displayed(view) ? OPEN_SPLIT : OPEN_DEFAULT;
 
-		if (!argv_format(main_view.env, &main_view.argv, all_references_argv, false, false))
+		if (!argv_format(main_view.env, &main_view.argv, all_references_argv, 0))
 			report("Failed to format argument");
 		else
 			open_main_view(view, flags | OPEN_PREPARED);

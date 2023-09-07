@@ -1,4 +1,4 @@
-/* Copyright (c) 2006-2015 Jonas Fonseca <jonas.fonseca@gmail.com>
+/* Copyright (c) 2006-2022 Jonas Fonseca <jonas.fonseca@gmail.com>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
@@ -68,8 +68,15 @@ log_open(struct view *view, enum open_flags flags)
 			"--stat", use_mailmap_arg(), "%(logargs)", "%(cmdlineargs)",
 			"%(revargs)", "--no-color", "--", "%(fileargs)", NULL
 	};
+	enum status_code code;
 
-	return begin_update(view, NULL, log_argv, flags);
+	code = begin_update(view, NULL, log_argv, flags);
+	if (code != SUCCESS)
+		return code;
+
+	watch_register(&view->watch, WATCH_HEAD | WATCH_REFS);
+
+	return SUCCESS;
 }
 
 static enum request
@@ -82,6 +89,9 @@ log_request(struct view *view, enum request request, struct line *line)
 		load_refs(true);
 		refresh_view(view);
 		return REQ_NONE;
+
+	case REQ_EDIT:
+		return diff_common_edit(view, request, line);
 
 	case REQ_ENTER:
 		if (!display[1] || strcmp(display[1]->vid, view->ref))
@@ -97,7 +107,7 @@ static bool
 log_read(struct view *view, struct buffer *buf, bool force_stop)
 {
 	struct line *line = NULL;
-	enum line_type type;
+	enum line_type type = LINE_DEFAULT;
 	struct log_state *state = view->private;
 	size_t len;
 	char *commit;
@@ -111,15 +121,18 @@ log_read(struct view *view, struct buffer *buf, bool force_stop)
 	if (commit && get_graph_indent(data) == commit - data)
 		state->graph_indent = commit - data;
 
-	type = get_line_type(data + state->graph_indent);
-	len = strlen(data + state->graph_indent);
+	len = strlen(data);
+	if (len >= state->graph_indent) {
+		type = get_line_type(data + state->graph_indent);
+		len -= state->graph_indent;
+	}
 
 	if (type == LINE_COMMIT)
 		state->commit_title_read = true;
 	else if (state->commit_title_read && len < 1) {
 		state->commit_title_read = false;
 		state->after_commit_header = true;
-	} else if (state->after_commit_header && len < 1) {
+	} else if ((state->after_commit_header && len < 1) || type == LINE_DIFF_START) {
 		state->after_commit_header = false;
 		state->reading_diff_stat = true;
 	} else if (state->reading_diff_stat) {

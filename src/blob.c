@@ -1,4 +1,4 @@
-/* Copyright (c) 2006-2015 Jonas Fonseca <jonas.fonseca@gmail.com>
+/* Copyright (c) 2006-2022 Jonas Fonseca <jonas.fonseca@gmail.com>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
@@ -141,7 +141,7 @@ blob_request(struct view *view, enum request request, struct line *line)
 		if (state->file)
 			open_editor(state->file, (line - view->line) + 1);
 		else
-			open_blob_editor(view->vid, NULL, (line - view->line) + 1);
+			open_blob_editor(view->vid, basename(view->ref), (line - view->line) + 1);
 		return REQ_NONE;
 
 	default:

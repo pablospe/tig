@@ -1,4 +1,4 @@
-/* Copyright (c) 2006-2015 Jonas Fonseca <jonas.fonseca@gmail.com>
+/* Copyright (c) 2006-2022 Jonas Fonseca <jonas.fonseca@gmail.com>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
@@ -297,9 +297,9 @@ mkfilesize(unsigned long size, enum file_size format)
 }
 
 const struct ident unknown_ident = {
-	"unknown@localhostUnknown",	// key
-	"Unknown",			// name
-	"unknown@localhost"		// email
+	"not.committed.yetNot Committed Yet",	// key
+	"Not Committed Yet",			// name
+	"not.committed.yet"			// email
 };
 
 int
@@ -447,7 +447,7 @@ chunk_allocator(void *mem, size_t type_size, size_t chunk_size, size_t size, siz
 		char *tmp = realloc(mem, newsize);
 
 		if (!tmp)
-			return NULL;
+			die("Failed to allocate chunk");
 
 		if (num_chunks_new > num_chunks) {
 			size_t oldsize = num_chunks * chunk_size * type_size;

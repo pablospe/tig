@@ -1,4 +1,4 @@
-/* Copyright (c) 2006-2015 Jonas Fonseca <jonas.fonseca@gmail.com>
+/* Copyright (c) 2006-2022 Jonas Fonseca <jonas.fonseca@gmail.com>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
@@ -31,6 +31,8 @@
  */
 
 DEFINE_ALLOCATOR(realloc_reflogs, char *, 32)
+
+static struct view_history main_view_history = { sizeof(unsigned long) };
 
 bool
 main_status_exists(struct view *view, enum line_type type)
@@ -92,7 +94,7 @@ main_add_commit(struct view *view, enum line_type type, struct commit *template,
 		return NULL;
 
 	*commit = *template;
-	strncpy(commit->title, title, titlelen);
+	strcpy(commit->title, title);
 	memset(template, 0, sizeof(*template));
 	state->reflogmsg[0] = 0;
 
@@ -120,7 +122,7 @@ main_add_changes_commit(struct view *view, enum line_type type, const char *pare
 	struct graph *graph = state->graph;
 	struct commit commit = {{0}};
 	struct timeval now;
-	struct timezone tz;
+	struct timezone tz = {0};
 
 	if (!parent)
 		return true;
@@ -539,7 +541,9 @@ main_request(struct view *view, enum request request, struct line *line)
 {
 	enum open_flags flags = (request != REQ_VIEW_DIFF &&
 				 (view_is_displayed(view) ||
-				  (line->type == LINE_MAIN_COMMIT && !view_is_displayed(&diff_view)) ||
+				  ((line->type == LINE_MAIN_COMMIT ||
+				    line->type == LINE_MAIN_ANNOTATED) &&
+				   !view_is_displayed(&diff_view)) ||
 				  line->type == LINE_STAT_UNSTAGED ||
 				  line->type == LINE_STAT_STAGED ||
 				  line->type == LINE_STAT_UNTRACKED))
@@ -570,7 +574,19 @@ main_request(struct view *view, enum request request, struct line *line)
 		break;
 
 	case REQ_PARENT:
-		goto_id(view, "%(commit)^", true, false);
+		if (push_view_history_state(&main_view_history, &view->pos, &view->pos.lineno)) {
+			goto_id(view, "%(commit)^", true, false);
+		} else {
+			report("Failed to save current view state");
+		}
+		break;
+
+	case REQ_BACK:
+		if (pop_view_history_state(&main_view_history, &view->pos, NULL)) {
+			redraw_view(view);
+		} else {
+			report("Already at start of history");
+		}
 		break;
 
 	case REQ_MOVE_NEXT_MERGE:
@@ -613,7 +629,7 @@ main_select(struct view *view, struct line *line)
 static struct view_ops main_ops = {
 	"commit",
 	argv_env.head,
-	VIEW_SEND_CHILD_ENTER | VIEW_FILE_FILTER | VIEW_LOG_LIKE | VIEW_REFRESH,
+	VIEW_SEND_CHILD_ENTER | VIEW_FILE_FILTER | VIEW_REV_FILTER | VIEW_LOG_LIKE | VIEW_REFRESH,
 	sizeof(struct main_state),
 	main_open,
 	main_read,

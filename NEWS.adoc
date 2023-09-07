@@ -1,6 +1,99 @@
 Release notes
 =============
 
+tig-2.5.8
+---------
+
+Improvements:
+
+ - Update utf8proc to v2.8.0, supporting Unicode 15.
+ - Support editing from the pager and the log (-p) views. (#1243)
+ - Adjust build for native Apple Silicon.
+ - Autoscroll the pager view while loading. (#1223)
+ - Automatically show next diff in the status view. (#413, #469)
+ - Replace `Unknown` author with `Not Committed Yet`.
+ - Allow use of regular expressions for coloring. (#1249)
+ - Add support for option word-diff-regex. (#1252)
+ - Include original blob name in temporary filename. (#1254)
+
+Bug fixes:
+
+ - Use %(file_old) for old filename in the blame view. (#1226)
+ - Correctly report which version of libncurses was linked. (#1240, #1241)
+ - Fix stage view closing when holding the ] key. (#1245)
+ - Make tests work from a path with symlinks.
+ - Fix encoding of very long lines. (#1227)
+ - Fix diffstat color for tig log -p.
+ - Clean IO before closing a view or quitting.
+
+tig-2.5.7
+---------
+
+Bug fixes:
+
+ - Fix running tests as root. (#1224)
+ - Fix parsing of status.showUntrackedFiles. (#1219)
+ - Avoid incorrect history path when $XDG_DATA_HOME is valid. (#1215, #1217)
+
+tig-2.5.6
+---------
+
+Bug fixes:
+
+ - Fix `:goto <tag>`. (#1178)
+ - Fix typo in ui.c.
+ - Revert terminal hacks and workarounds. (#748, #943, #1180, #1182)
+ - Fix opening of an ambiguous ref in refs view.
+ - Fix search when view is loading.
+ - Use the full width for diffstat in the stage view.
+ - Improve escaping of variables in external commands.
+ - Fix cursor behaviour during staging. (#842, #1028)
+ - Fix navigation in split tree view.
+ - Enable textconv in the stage view.
+ - Enable textconv in the blame view and fix blame -L. (#978, #1189)
+ - Update lineno for untracked files. (#1192)
+ - Fix alignment of transliterated text. (#1195)
+ - Fix word diff in the stage, stash and blame views. (#1207)
+ - Fix reading the value of status.showUntrackedFiles. (#1211)
+ - Honor commit_title:no in view settings.
+ - Fix segfault with PCRE.
+
+tig-2.5.5
+---------
+
+Improvements:
+
+ - Make word-diff a toggleable option. (#1119, #1125)
+ - Add Linux installation instructions. (#1121, #1126)
+ - Allow :back to work across separate blame views. (#1123, #1127)
+ - Add auto-refresh to log view. (#1128)
+ - Expose `%(file_old)`, useful for deleted and renamed files. (#1132)
+ - Enable jumping back in main view. (#628, #1138)
+ - Add PCRE (Perl Compatible Regular Expressions) support. (#1137, #1143)
+ - Pass command line args through to diff-files in status view. (#1152, #1155)
+ - Remove quotes from TIG_LS_REMOTE to allow inline shell commands. (#1160, #1161)
+ - Avoid pushing identical history state in main view.
+ - Replace useless strncpy to avoid compilation warning with GCC 8.
+ - Update utf8proc to v2.7.0.
+ - Update distclean rule to preserve tarball contents. (#1167, #1169)
+ - Add reference types stash and other. (#1160, #1172)
+ - Auto refresh view upon option change.
+ - Allow to toggle revision filtering. (#1173)
+
+Bug fixes:
+
+ - Fix null dereferences on unset format strings. (#1136, #1159)
+ - Fix invalid read in log_read. (#1128)
+ - Restore support for tig log --graph. (#1128)
+ - Further fix to fullscreen navigation.
+ - Fix blame when opened from an initial diff view. (#1135)
+ - Fix stash view when using tig --all or tig revs. (#1146, #1147)
+ - Avoiding null pointer dereference. (#1096)
+ - Fix navigation between chunks after splitting chunk. (#1101, #1162)
+ - Fix status line when toggling general options. (#1163, #1164)
+ - Honor reference-format = hide:tag in diff view. (#1168, #1170)
+ - Fix crash on :toggle file-args.
+
 tig-2.5.4
 ---------
 
@@ -698,7 +791,7 @@ tig-1.2
 -------
 
  - Tig now has its own tag on Stack Overflow, where users are invited to
-   ask questions: http://stackoverflow.com/questions/tagged/tig
+   ask questions: https://stackoverflow.com/questions/tagged/tig
 
 Improvements:
 
